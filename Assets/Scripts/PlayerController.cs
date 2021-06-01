@@ -4,29 +4,27 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    [HideInInspector]public bool lockedCursor = true;
+    [HideInInspector]public bool gamePlaying = true;
 
     [SerializeField] Transform playerCamera; //First-Person camera parented to the player GameObject.
     [SerializeField] float horizontalMouseSensitivity = 2.5f; //Multiplyer of the base sensetivity.
     [SerializeField] float verticalMouseSensitivity = 2.5f; //Multiplyer of the base sensetivity.
-    [SerializeField] float walkSpeed = 5.0f; //The default speed that the player will move at.
-    [SerializeField] [Range(0.0f, 0.5f)] float movementSmoothTime = 0.3f; //The time taken to smooth between the current movement vector, and the next one.
-    [SerializeField] [Range(0.0f, 0.1f)] float mouseSmoothTime = 0.03f;
-    [SerializeField] float gravity = -13.0f;
-    [SerializeField] float jumpForce = 5.0f;
+    [SerializeField] float walkSpeed = 6.0f; //The default speed that the player will move at.
+    [SerializeField] [Range(0.0f, 0.5f)] float movementSmoothTime = 0.15f; //The time taken to smooth between the current movement vector, and the next one.
+    [SerializeField] [Range(0.0f, 0.1f)] float mouseSmoothTime = 0.0f;
+    [SerializeField] float gravity = -13.0f; //The gravitational strength in the scene.
+    [SerializeField] float jumpForce = 1.0f; //The number of units the player can move on the Y axis when jumping.
 
-    float cameraPitch = 0.0f;
+    float cameraPitch = 0.0f; //The angle of the camera's pitch. Used to clamp the player's view range.
     CharacterController controller = null; //CharacterController component on the player GameObject.
 
-    Vector2 currentDir = Vector2.zero;
+    Vector2 currentDir = Vector2.zero; //Used for movement smoothing.
     Vector2 currentDirVelocity = Vector2.zero;
-
-    Vector2 currentMouseDelta = Vector2.zero;
+    Vector2 currentMouseDelta = Vector2.zero; //used for mouse smoothing.
     Vector2 currentMouseDeltaVelocity = Vector2.zero;
 
-    float velocityY = 0.0f; //How quickly the player is moving on the Y axis.
+    Vector3 playerVelocity = Vector3.zero; //Used for jumping. While this is a Vector3, only the y component is actually used.
 
-    bool canJump = false;
 
     // Start is called before the first frame update
     void Start()
@@ -40,23 +38,27 @@ public class PlayerController : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.E/*scape*/))
         {
-            lockedCursor = !lockedCursor;
+            gamePlaying = !gamePlaying; //Pauses and unpauses the game.
             UpdateCursorLock();
         }
 
-        if (lockedCursor) //Game is currently playing.
+        if (gamePlaying) //Game is currently playing.
         {
+            bool onGround = RaycastHitFloor();
+            if (playerVelocity.y < 0.0f && onGround) playerVelocity.y = 0.0f;
+
+            if (Input.GetKeyDown(KeyCode.Space) && onGround)
+            {
+                playerVelocity.y += Mathf.Sqrt(jumpForce * -3.0f * gravity); //Calculates player's velocity.
+                controller.Move(playerVelocity * Time.deltaTime); //Carries out the jump.
+            }
+
             UpdateCamera();
             UpdateMovement();
 
-            if (Input.GetKeyDown(KeyCode.Space) && canJump)
-            {
-                controller.Move(Vector3.up * jumpForce * Time.deltaTime);
-                canJump = false;
-            }
+            //Debug.Log("playerVelocity: " + playerVelocity.y);
         }
 
-        
     }
 
     void UpdateCamera() //An update function to change the rotation of the First-Person camera.
@@ -73,7 +75,7 @@ public class PlayerController : MonoBehaviour
 
     void UpdateCursorLock() //An update function to handle the lock state and visibility of the cursor when entering and exiting gameplay.
     {
-        if (lockedCursor)
+        if (gamePlaying)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -87,19 +89,32 @@ public class PlayerController : MonoBehaviour
 
     void UpdateMovement() //An update function to change the position of the player character.
     {
+        
         Vector2 targetDir = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")); //maps out movement directions onto a 2d vector.
         targetDir.Normalize(); //Normalizes the vector, so all directions have the length of 1. This means that diagonals are not longer.
 
         currentDir = Vector2.SmoothDamp(currentDir, targetDir, ref currentDirVelocity, movementSmoothTime); //Smooths the vector.
 
-        if (controller.isGrounded)
-        {
-            velocityY = 0.0f;
-            canJump = true;
-        }
-        velocityY += gravity * Time.deltaTime;
+        
+        playerVelocity.y += gravity * Time.deltaTime;
 
-        Vector3 velocity = (transform.forward * currentDir.y + transform.right * currentDir.x) * walkSpeed + Vector3.up * velocityY; //Calculates the movement vector.
-        controller.Move(velocity * Time.deltaTime); //Passes movement to the CharacterController component.
+        Vector3 velocity = (transform.forward * currentDir.y + transform.right * currentDir.x) * walkSpeed + Vector3.up * playerVelocity.y; //Calculates the movement vector.
+        if (velocity.x != 0.0f || velocity.z != 0.0f)
+            controller.Move(velocity * Time.deltaTime); //Passes movement to the CharacterController component.
+
+
+    }
+
+    bool RaycastHitFloor()
+    {
+        Vector3 origin = transform.position;
+        Vector3 direction = Vector3.down;
+        float maxDistance = 1.5f;
+
+        if (Physics.Raycast(origin, direction, maxDistance))
+        {
+            return true;
+        }
+        else return false;
     }
 }
